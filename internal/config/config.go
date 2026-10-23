@@ -17,6 +17,13 @@ type Config struct {
 	Admin  AdminConfig  `yaml:"admin"`
 	CORS   CORSConfig   `yaml:"cors"`
 	Redis  RedisConfig  `yaml:"redis"`
+	Upload UploadConfig `yaml:"upload"`
+}
+
+// UploadConfig 上传文件的落盘目录。简历 PDF 存这里，
+// 容器部署时挂 volume，避免重新发版把文件冲掉（文件不进数据库，只存元信息）。
+type UploadConfig struct {
+	Dir string `yaml:"dir"`
 }
 
 // RedisConfig 缓存连接配置。生产环境用环境变量覆盖 host/password
@@ -93,6 +100,10 @@ func Load() *Config {
 	}
 
 	applyEnvOverrides(&cfg)
+	// 上传目录不给默认值就是空字符串，这里兜一个，省得每个调用点都判空
+	if cfg.Upload.Dir == "" {
+		cfg.Upload.Dir = "./storage"
+	}
 	return &cfg
 }
 
@@ -117,6 +128,8 @@ func applyEnvOverrides(cfg *Config) {
 
 	setStr(&cfg.JWT.Secret, "JWT_SECRET")
 	setInt(&cfg.JWT.ExpireHours, "JWT_EXPIRE_HOURS")
+
+	setStr(&cfg.Upload.Dir, "UPLOAD_DIR")
 
 	setStr(&cfg.Admin.Username, "ADMIN_USERNAME")
 	setStr(&cfg.Admin.Password, "ADMIN_PASSWORD")

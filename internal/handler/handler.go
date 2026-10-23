@@ -11,4 +11,6 @@ type Handler struct {
 	Project    *ProjectHandler
 	FriendLink *FriendLinkHandler
 	Visit      *VisitLogHandler
+	Profile    *ProfileHandler
+	Resume     *ResumeHandler
 }

@@ -27,6 +27,15 @@ const (
 	CodeFriendNotOwner        = 5103 // 只能操作自己提交的友链
 	CodeFriendVisitorRequired = 5104 // 缺少访客标识（X-Visitor-ID）
 	CodeFriendBadStatus       = 5105 // 友链状态非法（只能 0/1/2）
+
+	// 个人档案 52xx
+	CodeProfileHeadlineEmpty = 5200 // 定位不能为空
+	CodeProfileTooLong       = 5201 // 字段超长（定位/所在地/最近在做/简介/列表项）
+
+	// 简历文件 53xx
+	CodeResumeEmpty    = 5300 // 上传的文件为空
+	CodeResumeTooLarge = 5301 // 文件超过大小上限
+	CodeResumeInvalid  = 5302 // 不是 PDF 文件
 )
 
 // BizError 业务错误：service 层抛出，handler 层统一映射为 HTTP 响应

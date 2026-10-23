@@ -35,11 +35,19 @@ func main() {
 	projectRepo := repository.NewProjectRepo(db)
 	friendLinkRepo := repository.NewFriendLinkRepo(db)
 	visitLogRepo := repository.NewVisitLogRepo(db)
+	profileRepo := repository.NewProfileRepo(db)
+	resumeRepo := repository.NewResumeRepo(db)
 
 	userSvc := service.NewUserService(userRepo, cfg)
 	// 启动时确保初始管理员存在（账号已存在则跳过）
 	if err := userSvc.SeedAdmin(); err != nil {
 		log.Fatalf("初始化管理员失败: %v", err)
+	}
+
+	profileSvc := service.NewProfileService(profileRepo)
+	// 首次启动写入一份初始档案：后台打开就是有内容的表单，而不是空白
+	if err := profileSvc.EnsureSeed(); err != nil {
+		log.Printf("初始化个人档案失败（不影响启动）: %v", err)
 	}
 
 	// 拦截链启动
@@ -53,6 +61,8 @@ func main() {
 		Project:    handler.NewProjectHandler(service.NewProjectService(projectRepo)),
 		FriendLink: handler.NewFriendLinkHandler(service.NewFriendLinkService(friendLinkRepo)),
 		Visit:      handler.NewVisitLogHandler(service.NewVisitLogService(visitLogRepo)),
+		Profile:    handler.NewProfileHandler(profileSvc),
+		Resume:     handler.NewResumeHandler(service.NewResumeService(resumeRepo, cfg.Upload.Dir)),
 	}
 
 	// 启动

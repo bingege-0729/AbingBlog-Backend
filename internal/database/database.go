@@ -49,6 +49,8 @@ func Init(cfg *config.Config) *gorm.DB {
 		&model.Project{},
 		&model.FriendLink{},
 		&model.VisitLog{},
+		&model.Profile{},
+		&model.ResumeFile{},
 	); err != nil {
 		log.Fatalf("自动迁移失败: %v", err)
 	}
