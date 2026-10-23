@@ -31,6 +31,8 @@ func Error(c *gin.Context, err error) {
 			status = http.StatusNotFound
 		case errcode.CodeLoginFail:
 			status = http.StatusUnauthorized
+		case errcode.CodeResumeTooLarge:
+			status = http.StatusRequestEntityTooLarge
 		}
 		Fail(c, status, be.Code, be.Msg)
 		return

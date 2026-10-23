@@ -104,6 +104,38 @@ type FriendLink struct {
 	DeletedAt   gorm.DeletedAt `json:"-" gorm:"index"` // 软删除：访客删除只打标记
 }
 
+// Profile 个人档案：单行表（ID 固定为 1），给门户右侧「档案 / 技术栈 / 近况」三张卡供数。
+// Stacks / Awards / Interests 是短字符串列表，用 JSON 列存（GORM serializer），
+// 比为几个短列表再建三张关联表划算：它们总是整组读写，不需要单独查询或排序。
+type Profile struct {
+	ID        uint     `gorm:"primaryKey"`
+	Headline  string   `gorm:"size:60"`                   // 一句话定位，如「后端开发 · AI 应用方向」
+	Location  string   `gorm:"size:40"`                   // 所在地
+	Summary   string   `gorm:"size:500"`                  // 简介
+	Stacks    []string `gorm:"type:json;serializer:json"` // 技术栈
+	Awards    []string `gorm:"type:json;serializer:json"` // 奖项；为空时前端自动隐藏该行
+	Doing     string   `gorm:"size:60"`                   // 最近在做
+	Interests []string `gorm:"type:json;serializer:json"` // 兴趣
+	// 经历时间线：每条 "时间段 | 标题 | 说明"（如 "2024.09 – 2028.06 | 广东金融学院 · 计算机科学与技术 | 本科在读"）。
+	// 用字符串而不是子表：条目就两三条，整组读写，后台一行一条最好维护。
+	Experiences []string `gorm:"type:json;serializer:json"`
+	// 站点默认配色：sand（暖纸·朱砂，浅色）/ ink（石墨·青，深色）。
+	// 存在档案表里而不是单独建配置表：它就是这个站点的一个展示属性，
+	// 跟着档案一起读写，省一次查询也省一张表。
+	Theme     string `gorm:"size:16;default:sand"`
+	UpdatedAt time.Time
+}
+
+// ResumeFile 简历 PDF 的元信息：单行表（ID 固定为 1）。
+// 文件本身落盘在配置的上传目录里，数据库只记「有没有、叫什么、多大、什么时候换的」——
+// 把 PDF 塞进 BLOB 会让每次查询都拖着一坨二进制，没必要。
+type ResumeFile struct {
+	ID        uint   `gorm:"primaryKey"`
+	Filename  string `gorm:"size:255"`           // 原始文件名，仅用于展示
+	Size      int64  `gorm:"not null;default:0"` // 字节数
+	UpdatedAt time.Time
+}
+
 // VisitLog 单次访问记录：明细表，"谁（visitor_key）什么时候访问了什么（path）"。
 // 访客身份两级识别：前端 UUID（X-Visitor-ID）或降级 sha256(IP+UA)，见 middleware.VisitTracker。
 type VisitLog struct {

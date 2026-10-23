@@ -27,6 +27,10 @@ func Setup(h *handler.Handler, secret string, allowOrigins []string, visitRepo *
 		v1.GET("/categories", h.Category.List)
 		v1.GET("/tags", h.Tag.List)
 		v1.GET("/projects", h.Project.List)
+		v1.GET("/profile", h.Profile.Get)
+		// 简历：公开只读元信息 + 下载本体，上传/删除在后台
+		v1.GET("/resume", h.Resume.Meta)
+		v1.GET("/resume/file", h.Resume.File)
 		v1.GET("/healthz", h.Health.Check)
 		v1.GET("/visits", h.Metric.Total)
 		v1.POST("/visits/start", h.Metric.RecordStart)
@@ -68,6 +72,14 @@ func Setup(h *handler.Handler, secret string, allowOrigins []string, visitRepo *
 
 			admin.GET("/visits", h.Visit.List)
 			admin.GET("/visits/summary", h.Visit.Summary)
+
+			// 个人档案：公开接口只读，写操作必须在后台（挂 JWT）
+			admin.GET("/profile", h.Profile.AdminGet)
+			admin.PUT("/profile", h.Profile.Update)
+
+			// 简历文件：POST 上传/覆盖（multipart，字段名 file），DELETE 删除
+			admin.POST("/resume", h.Resume.Upload)
+			admin.DELETE("/resume", h.Resume.Delete)
 		}
 	}
 	return r

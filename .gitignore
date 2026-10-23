@@ -12,3 +12,6 @@
 
 # 密钥
 .env
+# 上传文件（简历 PDF 等）：属于运行期数据，不进仓库
+storage/
+.workbuddy/

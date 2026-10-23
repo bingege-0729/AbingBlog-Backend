@@ -99,16 +99,16 @@ type VisitStats struct {
 func (r *VisitLogRepo) Stats() (VisitStats, error) {
 	var s VisitStats
 	today0 := time.Now().Format("2006-01-02") // Go 的日期格式就是 2006-01-02，不是 yyyy-MM-dd
+	// 一次查询算完四个指标。不能对同一个 struct 连续 Scan 两次：
+	// GORM 的 Scan 在 ScanInitialized 模式下会先把目标结构体清零再写入，
+	// 第二次 Scan 会把第一次写进去的 total/distinct_users 清回 0。
 	err := r.db.Model(&model.VisitLog{}).Select(
-		"COUNT(*) AS total, COUNT(DISTINCT visitor_key) AS distinct_users",
+		"COUNT(*) AS total",
+		"COUNT(DISTINCT visitor_key) AS distinct_users",
+		"COUNT(CASE WHEN created_at >= ? THEN 1 END) AS today",
+		"COUNT(DISTINCT CASE WHEN created_at >= ? THEN visitor_key END) AS today_distinct",
+		today0, today0,
 	).Scan(&s).Error
-	if err != nil {
-		return s, err
-	}
-	err = r.db.Model(&model.VisitLog{}).
-		Where("created_at >= ?", today0).
-		Select("COUNT(*) AS today, COUNT(DISTINCT visitor_key) AS today_distinct").
-		Scan(&s).Error
 	return s, err
 }
 

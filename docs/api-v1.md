@@ -80,6 +80,24 @@
 - 响应：`data: { "list": [ { "id": 1, "slug": "abingblog", "name": "ABINGBLOG", "detail": "...", "stack": "GO · VUE · MYSQL", "github_url": "", "demo_url": "", "sort": 0, "status": "published", "created_at": "...", "updated_at": "..." } ], "total": 3, "page": 1, "page_size": 10 }`
 - 前端 `ProjectSummary` 的 `githubUrl` / `demoUrl` 对应 `github_url` / `demo_url`，由前端映射层转换。
 
+### GET /profile —— 个人档案（右侧档案卡）
+- 无需登录；门户右侧「档案 / 技术栈 / 近况」三张卡的数据源。
+- 单行数据（`profiles` 表 ID 固定为 1），从未保存过时返回空字符串 + 空数组，**不返回 404 / 500**——前台用自己的默认值兜底。
+- `stacks` / `awards` / `interests` / `experiences` 存 JSON 列，恒返回 `[]`（不会是 `null`，否则前端会放弃兜底）。
+- `experiences` 每条格式为 `时间段 | 标题 | 说明`，前端按 `|` 拆成三段渲染成时间线；说明可省略。
+- `theme` 是站点默认配色，只有两个合法值：`sand`（暖纸·朱砂，浅色）/ `ink`（石墨·青，深色）。老数据或空值统一返回 `sand`，前台会用它当默认主题，访客仍可自己切。
+- 响应：`data: { "headline": "后端开发 · AI 应用方向", "location": "广州", "summary": "...", "stacks": ["Go","Java"], "awards": [], "doing": "", "interests": ["音乐"], "experiences": ["2024.09 – 2028.06 | 广东金融学院 · 计算机科学与技术 | 本科在读"], "theme": "sand" }`
+
+### GET /resume —— 简历文件元信息
+- 无需登录；前台据此决定要不要显示「下载简历 PDF」按钮，没上传过**不返回 404/500**。
+- 只保留一份简历：上传即覆盖，下载地址固定，不需要版本号。
+- 响应：`data: { "available": true, "filename": "Nomad-简历.pdf", "size": 233472, "updated_at": "2026-10-23T10:30:00+08:00" }`
+- 元信息有记录但磁盘文件丢失时返回 `available: false`（以文件为准，避免给出死链）。
+
+### GET /resume/file —— 下载简历 PDF
+- 无需登录；直接返回 `application/pdf`，带 `Content-Disposition: attachment`，支持 Range。
+- 没有文件时返回 **404 纯文本**（不是 JSON 信封：这个地址是给 `<a download>` 用的）。
+
 ### GET /healthz —— 健康检查
 - 供 Docker / CD 部署做健康检查，检查 DB 连通性
 - 响应：`{ "status": "ok", "db": "ok" }`
@@ -136,6 +154,29 @@
 | PUT | /admin/projects/:id | 更新，字段同创建（全量更新） |
 | DELETE | /admin/projects/:id | 软删除 |
 
+### 后台个人档案（`/admin/*`，均需 JWT）
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| GET | /admin/profile | 读取档案（与公开接口同一份数据，单独路由让权限边界清晰） |
+| PUT | /admin/profile | 全量保存：`{ headline, location?, summary?, stacks?, awards?, doing?, interests?, experiences?, theme? }` |
+
+- `headline` 必填（≤60 字）；`location` ≤40、`doing` ≤60、`summary` ≤500；列表单项 ≤60 字（经历单项 ≤160 字）、最多 20 条。
+- `theme` 只接受 `sand` / `ink`，传空或非法值**不报错**，静默回落 `sand`（配色是展示偏好，不该打断整份档案的保存）。
+- 保存前逐项 trim 并丢弃空串，避免前端「用 / 或逗号分隔」留下空元素。
+- 首次启动会自动写入一份初始档案（`ProfileService.EnsureSeed`），后台打开即是有内容的表单。
+
+### 后台简历文件（`/admin/*`，均需 JWT）
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| POST | /admin/resume | 上传/替换：`multipart/form-data`，字段名 `file` |
+| DELETE | /admin/resume | 删除（前台随后不再显示下载按钮） |
+
+- 只接受 PDF（校验文件头 `%PDF-`，改后缀名无效），≤10MB；超限返回 HTTP 413 + code 5301。
+- 落盘位置：配置 `upload.dir`（环境变量 `UPLOAD_DIR`，默认 `./storage`），文件名固定 `resume.pdf`；先写临时文件再 rename，替换过程中不会把旧简历弄坏。
+- 数据库只存元信息（`resume_files` 单行表：文件名 / 大小 / 更新时间），PDF 本身不进库。
+
 ### 业务错误码（初版）
 
 | code | 含义 |
@@ -154,6 +195,11 @@
 | 1010 | 项目不存在 |
 | 1011 | 项目 slug 不能为空 |
 | 1012 | 项目 slug 已存在 |
+| 5200 | 个人档案：定位不能为空 |
+| 5201 | 个人档案：字段超长 |
+| 5300 | 简历文件为空 |
+| 5301 | 简历文件超过 10MB |
+| 5302 | 简历不是 PDF 文件 |
 | 5000 | 服务器内部错误 |
 
 ## 5. Redis 缓存与 MQ 异步业务（初版方案，实现阶段细化）

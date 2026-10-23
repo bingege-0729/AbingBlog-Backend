@@ -51,6 +51,10 @@ services:
       REDIS_DB: 0
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
       JWT_EXPIRE_HOURS: ${JWT_EXPIRE_HOURS:-24}
+      # 上传目录：简历 PDF 落在这里。必须挂 volume，否则每次发版容器重建就丢文件
+      UPLOAD_DIR: /data/uploads
+    volumes:
+      - upload-data:/data/uploads
     ports:
       - "127.0.0.1:${SERVER_PORT:-8080}:8080"
     healthcheck:
@@ -64,3 +68,4 @@ services:
 volumes:
   mysql-data:
   redis-data:
+  upload-data:
