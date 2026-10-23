@@ -5,7 +5,9 @@ import (
 	"encoding/hex"
 	"log"
 	"net"
+	"net/url"
 	"strings"
+	"unicode/utf8"
 
 	"abingblog-backend/internal/model"
 	"abingblog-backend/internal/repository"
@@ -33,22 +35,14 @@ func VisitTracker(repo *repository.VisitLogRepo) gin.HandlerFunc {
 		ip := normalizeIP(c.ClientIP())
 
 		// 1. 确定访客身份
-		key := strings.TrimSpace(c.GetHeader("X-Visitor-ID"))
-		if len(key) > 64 {
-			key = key[:64] // 防恶意超长头
-		}
+		key := sanitizeHeader(c.GetHeader("X-Visitor-ID"), 64)
 		if key == "" {
 			sum := sha256.Sum256([]byte(ip + "|" + ua))
 			key = hex.EncodeToString(sum[:])[:64]
 		}
-		nickname := strings.TrimSpace(c.GetHeader("X-Visitor-Name"))
-		if len(nickname) > 64 {
-			nickname = nickname[:64]
-		}
-		device := strings.TrimSpace(c.GetHeader("X-Visitor-Device"))
-		if len(device) > 128 {
-			device = device[:128]
-		}
+		// 昵称允许中文，前端用 encodeURIComponent 送过来，这里还原
+		nickname := sanitizeHeader(decodeHeader(c.GetHeader("X-Visitor-Name")), 64)
+		device := sanitizeHeader(c.GetHeader("X-Visitor-Device"), 128)
 
 		// 2. 先取出需要的数据再起 goroutine！
 		//    gin.Context 在请求结束后会被回收复用，异步代码里绝不能再碰 c。
@@ -58,8 +52,8 @@ func VisitTracker(repo *repository.VisitLogRepo) gin.HandlerFunc {
 			Device:     device,
 			Path:       path,
 			IP:         ip,
-			UserAgent:  truncate(ua, 512),
-			Referer:    truncate(c.Request.Header.Get("Referer"), 512),
+			UserAgent:  sanitizeHeader(ua, 512),
+			Referer:    sanitizeHeader(c.Request.Header.Get("Referer"), 512),
 		}
 
 		// 3. 异步写库，不阻塞响应
@@ -79,11 +73,45 @@ func VisitTracker(repo *repository.VisitLogRepo) gin.HandlerFunc {
 	}
 }
 
-func truncate(s string, n int) string {
-	if len(s) <= n {
+// sanitizeHeader 把 HTTP 头转成能安全写进 utf8mb4 列的字符串。
+//
+// 为什么需要：HTTP 头本质是字节流。浏览器发非 ASCII 字符（比如 "·" U+00B7）时，
+// 会按 ISO-8859-1 落成单字节 0xB7，Go 读到的就是一段非法 UTF-8；
+// 直接 INSERT 到 utf8mb4 列会报 1366 Incorrect string value。
+// 另外长度必须按「字符数」截断——按字节切会把多字节字符劈成两半，同样写不进库。
+func sanitizeHeader(s string, max int) string {
+	// 先修非法 UTF-8，再清控制字符。
+	// 顺序不能反：strings.Map 遇到非法字节会把它当成 U+FFFD 吐回来，
+	// 先 Map 的话这一步等于把坏字节"洗白"成合法的替换符，ToValidUTF8 就删不掉了。
+	s = strings.ToValidUTF8(strings.TrimSpace(s), "")
+	// 控制字符（含 \x00）MySQL 也不收；制表符折成空格
+	s = strings.Map(func(r rune) rune {
+		switch {
+		case r == '\t':
+			return ' '
+		case r < 0x20 || r == 0x7f:
+			return -1
+		default:
+			return r
+		}
+	}, s)
+	s = strings.TrimSpace(s)
+	if utf8.RuneCountInString(s) <= max {
 		return s
 	}
-	return s[:n]
+	return string([]rune(s)[:max])
+}
+
+// decodeHeader 还原 percent-encoding（前端送中文昵称时会编码）。
+// 没带 % 就不动，避免把正常的百分号吃掉。
+func decodeHeader(s string) string {
+	if !strings.ContainsRune(s, '%') {
+		return s
+	}
+	if decoded, err := url.QueryUnescape(s); err == nil {
+		return decoded
+	}
+	return s
 }
 
 // normalizeIP 把 IPv6 回环/映射地址规整成可读的 IPv4（::1 → 127.0.0.1、::ffff:1.2.3.4 → 1.2.3.4），
